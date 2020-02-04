@@ -1,0 +1,150 @@
+---
+title: "Predicting Attrition with Support Vector Machines - Comparing Linear methods and Radial Basis Kernel"
+author: "Luc de Leyritz"
+date: "21/01/2020"
+output: 
+  html_document:
+    theme: flatly
+    highlight: zenburn
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, tidy = TRUE)
+```
+
+
+```{r message=FALSE, warning=FALSE, include = FALSE}
+rm(list=ls())
+graphics.off()
+# Helper packages
+library(dplyr)    # for data wrangling
+library(ggplot2)  # for awesome graphics
+library(rsample)  # for data splitting
+library(tidyverse)
+library(prettydoc)
+
+# Modeling packages
+library(caret)    # for classification and regression training
+library(kernlab)  # for fitting SVMs
+library(e1071)
+
+```
+
+# ICE
+
+## Loading the Data 
+```{r Data Loading, message=FALSE, warning=FALSE}
+# Load attrition data
+attrition_data <- attrition %>% 
+  mutate_if(is.ordered, factor, ordered = FALSE)
+head(attrition_data, 1)
+```
+
+```{r Data Splitting , message=FALSE, warning=FALSE}
+# Create training (80%) and test (20%) sets
+set.seed(123)  # for reproducibility
+attrition_split <- initial_split(attrition_data, prop = 0.8, strata = "Attrition") #we use the strata command to ensure that the training and testing dataset have the same attrition rate
+attrition_train <- training(attrition_split)
+attrition_test  <- testing(attrition_split)
+```
+
+# Finding the SVM Classifier & Main Findings 
+
+See attached report
+
+In thos project I compare the performances of SVM model trained using the Radial Basis Kernel and an SVM model with a Linear Kernel.
+
+```{r SVM Fitting RBF}
+#We use caret’s train() function with method = "svmRadialSigma" is used to get 
+#values of C (cost) and \sigma through cross-validation
+set.seed(1854)  
+attrition_svm_RBF <- train(
+  Attrition ~ ., 
+  data = attrition_train,
+  method = "svmRadial",               
+  preProcess = c("center", "scale"),  
+  trControl = trainControl(method = "cv", number = 10),
+  tuneLength = 10
+)
+
+# Print results
+attrition_svm_RBF
+
+
+```
+
+```{r include = FALSE}
+#Plotting the results, we see that smaller values of the cost parameter
+#( C≈ 2–4) provide better cross-validated accuracy scores for these 
+#training data:
+ggplot(attrition_svm_RBF) + theme_light()
+
+```
+
+```{r}
+#We predict using the testing set
+RBF_svm_predictions <- predict(attrition_svm_RBF, attrition_test)
+confusionMatrix(RBF_svm_predictions, attrition_test$Attrition)
+```
+
+
+```{r Linear SVM Fitting}
+
+svmGrid <- data.frame(C = 2)
+
+attrition_svm_linear <- train(
+  Attrition ~ ., 
+  data = attrition_train,
+  method = "svmLinear",               
+  preProcess = c("center", "scale"),  
+  trControl = trainControl(method = "cv", number = 10),
+  tuneGrid = svmGrid
+)
+
+# Print results
+attrition_svm_linear
+
+#We predict using the testing set
+linear_svm_predictions <- predict(attrition_svm_linear, attrition_test)
+confusionMatrix(linear_svm_predictions, attrition_test$Attrition)
+
+```
+
+The results are that our both our models have comparable accuracy levels, namely, 89% for the Radial Basis Kernel and 90.1% for the Linear Kernel. These results are computed using C = 2, as found with the grid search conducted on the first model fitting.
+
+## Comparing SVM (with Radial Basis Function) to a logistic regression
+
+```{r Logistic Regression}
+attrition_logReg  <- train(
+  Attrition ~ ., 
+  data = attrition_train,
+  method = "glm",               
+  preProcess = c("center", "scale"),  
+  trControl = trainControl(method = "cv", number = 10)
+)
+
+prediction_logReg <- predict(attrition_logReg, attrition_test)
+confusionMatrix(prediction_logReg, attrition_test$Attrition)
+```
+Similarly, we get slightly better result in terms of accuracy (90.1%) with a simpler logistic regression classifier.
+
+# Testing our model on a particular case
+
+We are testing the model, pondering whether we would take action to retain this specific employee
+
+```{r Loading single employee, include=FALSE}
+single_employee <- read_csv("Single_employee.csv")
+```
+
+```{r}
+glimpse(single_employee)
+
+#we use our best model to predict the likelihood of her leaving
+prob_employee_attrition <- predict(attrition_logReg, single_employee, type = "prob")
+prob_employee_attrition
+```
+
+Our model, that has a 90% accuracy, predicts that this employee will leave, with a probability of 83%. As a result we would consider taking action in order for her to want to stay. 
+
+Among the actionq we might consider, looking at the logistic regression results, we would focus on improving work/life balance or taking action to improve her relationship staisfaction. Those are factors that bear a significant impact over attrition rate and for which she could improve.
+
+
